@@ -9,27 +9,26 @@ from telegram.ext import (
 )
 import os
 
-TOKEN = "8752747497:AAEp0ntICw2rRGT4QEmFd0zp3Tfr3KclsD0"
+# Read sensitive values from environment for deployment
+TOKEN = os.environ.get("TOKEN")
+if not TOKEN:
+    raise RuntimeError("TOKEN environment variable not set")
 
-STICKER_ID = "CAACAgIAAxkBAAPJagTG0C9kW8QOFfHfsM1c5bFuOCsAAtijAAPtIUgYVJ5-tM3vqTsE"
+STICKER_ID = os.environ.get(
+    "STICKER_ID",
+    "CAACAgIAAxkBAAPJagTG0C9kW8QOFfHfsM1c5bFuOCsAAtijAAPtIUgYVJ5-tM3vqTsE"
+)
 
-# Flask
-web_app = Flask('')
+# Flask app (Render expects the web process to bind $PORT)
+web_app = Flask(__name__)
 
-@web_app.route('/')
+
+@web_app.route("/")
 def home():
     return "Bot ishlayapti!"
 
-def run_web():
-    port = int(os.environ.get("PORT", 10000))
-    web_app.run(host='0.0.0.0', port=port)
 
-def keep_alive():
-    t = Thread(target=run_web)
-    t.daemon = True
-    t.start()
-
-# Sticker funksiyasi
+# Sticker handler
 async def send_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
@@ -38,10 +37,22 @@ async def send_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_sticker(sticker=STICKER_ID)
 
-# Bot
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(MessageHandler(filters.TEXT, send_sticker))
 
-keep_alive()
-print("Bot ishga tushdi...")
-app.run_polling()
+# Build bot application
+bot_app = ApplicationBuilder().token(TOKEN).build()
+bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_sticker))
+
+
+def start_bot_polling():
+    print("Starting bot polling thread...")
+    bot_app.run_polling()
+
+
+if __name__ == "__main__":
+    # Start bot in a background thread, keep Flask as the main process for Render
+    t = Thread(target=start_bot_polling)
+    t.start()
+
+    port = int(os.environ.get("PORT", 10000))
+    print("Web server starting on port", port)
+    web_app.run(host="0.0.0.0", port=port)
